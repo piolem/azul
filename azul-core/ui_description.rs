@@ -59,11 +59,11 @@ impl<T> Default for UiDescription<T> {
     fn default() -> Self {
 
         use {
-            dom::Dom,
+            dom::CompactDom,
             ui_state::ui_state_from_dom,
         };
 
-        let default_dom = Dom::div();
+        let default_dom = CompactDom::div();
         let hovered_nodes = BTreeMap::new();
         let is_mouse_down = false;
 

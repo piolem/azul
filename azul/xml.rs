@@ -3,7 +3,7 @@
 use std::{fmt, collections::BTreeMap, path::Path};
 use {
     callbacks::Callback,
-    dom::Dom,
+    dom::CompactDom,
 };
 use xmlparser::Tokenizer;
 pub use xmlparser::{Error as XmlError, TokenType, TextPos, StreamError};
@@ -47,7 +47,7 @@ pub type ComponentArgumentType = String;
 ///     c: &'a HashMap<X, Y>,
 /// }
 ///
-/// fn render_component_test<'a, T>(args: &TestRendererArgs<'a>) -> Dom<T> {
+/// fn render_component_test<'a, T>(args: &TestRendererArgs<'a>) -> CompactDom<T> {
 ///     Button::with_label(format!("Is this true? Scientists say: {:?}", args.b)).with_class(format!("test_{}", args.a))
 /// }
 /// ```
@@ -116,14 +116,14 @@ pub trait XmlComponent<T> {
     /// data format.
     fn get_available_arguments(&self) -> ComponentArguments;
     /// Given a root node and a list of possible arguments, returns a DOM or a syntax error
-    fn render_dom(&self, components: &XmlComponentMap<T>, arguments: &FilteredComponentArguments, content: &XmlTextContent) -> Result<Dom<T>, RenderDomError>;
+    fn render_dom(&self, components: &XmlComponentMap<T>, arguments: &FilteredComponentArguments, content: &XmlTextContent) -> Result<CompactDom<T>, RenderDomError>;
     /// Used to compile the XML component to Rust code - input
     fn compile_to_rust_code(&self, components: &XmlComponentMap<T>, attributes: &FilteredComponentArguments, content: &XmlTextContent) -> Result<String, CompileError>;
 }
 
 pub struct DomXml<T> {
     pub original_string: String,
-    pub parsed_dom: Dom<T>,
+    pub parsed_dom: CompactDom<T>,
 }
 
 impl<T> DomXml<T> {
@@ -179,13 +179,13 @@ impl<T> DomXml<T> {
     /// ## Example
     ///
     /// ```rust
-    /// # use azul::dom::Dom;
-    /// # use azul::xml::DomXml;
+    /// # use azul::dom::CompactDom;
+    /// # use azul::xml::CompactDomXml;
     /// let dom = DomXml::mock("<div id='test' />");
     /// dom.assert_eq(Dom::div().with_id("test"));
     /// ```
     #[cfg(test)]
-    pub fn assert_eq(self, other: Dom<T>) {
+    pub fn assert_eq(self, other: CompactDom<T>) {
         let fixed = Dom::div().with_child(other);
         let expected = self.into_dom();
         if expected != fixed {
@@ -195,13 +195,13 @@ impl<T> DomXml<T> {
         }
     }
 
-    pub fn into_dom(self) -> Dom<T> {
+    pub fn into_dom(self) -> CompactDom<T> {
         self.into()
     }
 }
 
-impl<T> Into<Dom<T>> for DomXml<T> {
-    fn into(self) -> Dom<T> {
+impl<T> Into<CompactDom<T>> for DomXml<T> {
+    fn into(self) -> CompactDom<T> {
         self.parsed_dom
     }
 }
@@ -245,7 +245,7 @@ impl<T> XmlComponent<T> for DynamicXmlComponent {
         components: &XmlComponentMap<T>,
         arguments: &FilteredComponentArguments,
         content: &XmlTextContent,
-    ) -> Result<Dom<T>, RenderDomError> {
+    ) -> Result<CompactDom<T>, RenderDomError> {
 
         let mut dom = Dom::div();
 
@@ -656,7 +656,7 @@ fn get_xml_components<T>(root_nodes: &[XmlNode], components: &mut XmlComponentMa
 }
 
 /// Parses an XML string and returns a `Dom` with the components instantiated in the `<app></app>`
-pub fn str_to_dom<T>(xml: &str, component_map: &mut XmlComponentMap<T>) -> Result<Dom<T>, XmlParseError> {
+pub fn str_to_dom<T>(xml: &str, component_map: &mut XmlComponentMap<T>) -> Result<CompactDom<T>, XmlParseError> {
     let root_nodes = parse_xml_string(xml)?;
     get_xml_components(&root_nodes, component_map)?;
     let app_node = get_app_node(&root_nodes)?;
@@ -713,7 +713,7 @@ fn compile_component(component_name: &str, component_args: &FilteredComponentArg
 fn render_dom_from_app_node<T>(
     app_node: &XmlNode,
     component_map: &XmlComponentMap<T>
-) -> Result<Dom<T>, RenderDomError> {
+) -> Result<CompactDom<T>, RenderDomError> {
 
     // Don't actually render the <app></app> node itself
     let mut dom = Dom::div();
@@ -728,7 +728,7 @@ fn render_dom_from_app_node_inner<T>(
     xml_node: &XmlNode,
     component_map: &XmlComponentMap<T>,
     parent_xml_attributes: &FilteredComponentArguments,
-) -> Result<Dom<T>, RenderDomError> {
+) -> Result<CompactDom<T>, RenderDomError> {
 
     let component_name = normalize_casing(&xml_node.node_type);
 
@@ -761,7 +761,7 @@ fn render_dom_from_app_node_inner<T>(
     Ok(dom)
 }
 
-fn set_attributes<T>(dom: &mut Dom<T>, xml_attributes: &XmlAttributeMap, filtered_xml_attributes: &FilteredComponentArguments) {
+fn set_attributes<T>(dom: &mut CompactDom<T>, xml_attributes: &XmlAttributeMap, filtered_xml_attributes: &FilteredComponentArguments) {
 
     use dom::{TabIndex, DomString};
 
@@ -912,7 +912,7 @@ fn compile_app_node_to_rust_code_inner<T>(app_node: &XmlNode, component_map: &Xm
 }
 
 /// Takes a DOM node and appends the necessary `.with_id().with_class()`, etc. to the DOMs HEAD
-fn render_single_dom_node_to_string<T>(dom: &Dom<T>, existing_str: &mut String) {
+fn render_single_dom_node_to_string<T>(dom: &CompactDom<T>, existing_str: &mut String) {
 
     let head = dom.get_head_node();
 
@@ -978,7 +978,7 @@ fn test_compile_dom_1() {
         </app>
     "#;
     let s1_expected = r#"
-        fn render_component_test<T>() -> Dom<T> {
+        fn render_component_test<T>() -> CompactDom<T> {
             Dom::div().with_id("a").with_class("b").is_draggable(true)
         }
     "#;
@@ -998,7 +998,7 @@ impl<T> XmlComponent<T> for DivRenderer {
         ComponentArguments::new()
     }
 
-    fn render_dom(&self, _: &XmlComponentMap<T>, _: &FilteredComponentArguments, _: &XmlTextContent) -> Result<Dom<T>, RenderDomError> {
+    fn render_dom(&self, _: &XmlComponentMap<T>, _: &FilteredComponentArguments, _: &XmlTextContent) -> Result<CompactDom<T>, RenderDomError> {
         Ok(Dom::div())
     }
 
@@ -1017,7 +1017,7 @@ impl<T> XmlComponent<T> for TextRenderer {
         ComponentArguments::new()
     }
 
-    fn render_dom(&self, _: &XmlComponentMap<T>, _: &FilteredComponentArguments, content: &XmlTextContent) -> Result<Dom<T>, RenderDomError> {
+    fn render_dom(&self, _: &XmlComponentMap<T>, _: &FilteredComponentArguments, content: &XmlTextContent) -> Result<CompactDom<T>, RenderDomError> {
         let content = content.as_ref().map(|s| prepare_string(&s)).unwrap_or_default();
         Ok(Dom::label(content))
     }

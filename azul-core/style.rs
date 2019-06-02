@@ -500,14 +500,14 @@ fn test_case_issue_93() {
     struct DataModel;
 
     fn render_tab() -> Dom<DataModel> {
-        Dom::div().with_class("tabwidget-tab")
+        CompactDom::div().with_class("tabwidget-tab")
             .with_child(Dom::label("").with_class("tabwidget-tab-label"))
             .with_child(Dom::label("").with_class("tabwidget-tab-close"))
     }
 
-    let dom = Dom::div().with_id("editor-rooms")
+    let dom = CompactDom::div().with_id("editor-rooms")
     .with_child(
-        Dom::div().with_class("tabwidget-bar")
+        CompactDom::div().with_class("tabwidget-bar")
         .with_child(render_tab().with_class("active"))
         .with_child(render_tab())
         .with_child(render_tab())

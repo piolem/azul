@@ -4,7 +4,7 @@
 use std::{collections::BTreeMap, marker::PhantomData};
 use {
     id_tree::{NodeId, NodeHierarchy},
-    dom::{Dom, NodeData},
+    dom::{CompactDom , NodeData},
 };
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -134,7 +134,7 @@ fn get_leaf_nodes_by_depth<T: FrameMarker>(hierarchy: &NodeHierarchy)
     map
 }
 
-pub(crate) fn diff_dom_tree<T>(old: &Dom<T>, new:Dom<T>) -> DomDiff {
+pub(crate) fn diff_dom_tree<T>(old: &CompactDom<T>, new:CompactDom<T>) -> DomDiff {
 
     // TODO!
 

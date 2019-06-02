@@ -27,7 +27,7 @@ use {
         WindowCreateError, WindowCreateOptions, RendererType, WindowSize, DebugState,
         FullWindowState,
     },
-    dom::{Dom, ScrollTagId},
+    dom::{CompactDom , ScrollTagId},
     gl::GlShader,
     traits::Layout,
     ui_state::UiState,
@@ -65,13 +65,13 @@ pub struct App<T> {
     /// The `Layout::layout()` callback, stored as a function pointer,
     /// There are multiple reasons for doing this (instead of requiring `T: Layout` everywhere):
     ///
-    /// - It seperates the `Dom<T>` from the `Layout` trait, making it possible to split the
+    /// - It seperates the `CompactDom<T>` from the `Layout` trait, making it possible to split the
     ///   UI solving and styling into reusable crates
     /// - It's less typing work (prevents having to type `<T: Layout>` everywhere)
     /// - It's potentially more efficient to compile (less type-checking required)
     /// - It's a preparation for the C ABI, in which traits don't exist (for language bindings).
     ///   In the C ABI "traits" are simply structs with function pointers (and void* instead of T)
-    layout_callback: fn(&T, layout_info: LayoutInfo<T>) -> Dom<T>,
+    layout_callback: fn(&T, layout_info: LayoutInfo<T>) -> CompactDom<T>,
     /// The actual renderer of this application
     #[cfg(not(test))]
     fake_display: FakeDisplay,
@@ -1002,7 +1002,7 @@ fn update_display_list<T>(
         &mut fake_display.render_api,
     );
 
-    // println!("cached display list: {:#?}", cached_display_list.root);
+    println!("cached display list: {:#?}", cached_display_list.root);
 
     add_resources(app_resources, &mut fake_display.render_api, Vec::new(), image_resource_updates);
 

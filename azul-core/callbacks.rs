@@ -8,7 +8,7 @@ use azul_css_parser::CssPathParseError;
 use {
     app::{AppState, AppStateNoData},
     async::TerminateTimer,
-    dom::{Dom, NodeType, NodeData},
+    dom::{CompactDom, NodeType, NodeData},
     ui_state::UiState,
     id_tree::{NodeId, Node, NodeHierarchy},
     app_resources::AppResources,
@@ -313,7 +313,7 @@ pub struct IFrameCallbackInfo<'a, 'b, T: 'b, U: Sized> {
     pub layout_info: LayoutInfo<'a, 'b, T>,
     pub bounds: HidpiAdjustedBounds,
 }
-pub type IFrameCallbackReturn<T> = Dom<T>; // todo: return virtual scrolling frames!
+pub type IFrameCallbackReturn<T> = CompactDom<T>; // todo: return virtual scrolling frames!
 pub type IFrameCallbackTypeUnchecked<T> = fn(IFrameCallbackInfoUnchecked<T>) -> IFrameCallbackReturn<T>;
 pub type IFrameCallbackType<T, U> = fn(IFrameCallbackInfo<T, U>) -> IFrameCallbackReturn<T>;
 

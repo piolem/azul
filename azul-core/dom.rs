@@ -944,145 +944,77 @@ impl From<&'static str> for DomString {
 }
 
 /// The document model, similar to HTML. This is a create-only structure, you don't actually read anything back
-pub struct Dom<T> {
+pub struct CompactDom<T> {
     pub arena: Arena<NodeData<T>>,
-    pub root: NodeId,
-    pub(crate) head: NodeId,
 }
 
-impl<T> Clone for Dom<T> {
+impl<T> Clone for CompactDom<T> {
     fn clone(&self) -> Self {
-        Dom {
+        CompactDom {
             arena: self.arena.clone(),
-            root: self.root.clone(),
-            head: self.head.clone(),
         }
     }
 }
 
-impl<T> PartialEq for Dom<T> {
+impl<T> PartialEq for CompactDom<T> {
     fn eq(&self, rhs: &Self) -> bool {
-        self.arena == rhs.arena &&
-        self.root == rhs.root &&
-        self.head == rhs.head
+        self.arena == rhs.arena
     }
 }
 
-impl<T> Eq for Dom<T> { }
+impl<T> Eq for CompactDom<T> { }
 
-impl<T> fmt::Debug for Dom<T> {
+impl<T> fmt::Debug for CompactDom<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f,
-        "Dom {{ arena: {:?}, root: {:?}, head: {:?} }}",
-        self.arena,
-        self.root,
-        self.head)
+        "CompactDom {{ arena: {:?} }}",
+        self.arena)
     }
+}
+
+
+pub struct Dom<T> {
+    pub root: NodeData<T>,
+    pub children: Vec<Dom<T>>,
+    estimated_total_children: usize,
 }
 
 impl<T> FromIterator<Dom<T>> for Dom<T> {
     fn from_iter<I: IntoIterator<Item=Dom<T>>>(iter: I) -> Self {
-        let mut c = Dom::new(NodeType::Div);
-        for i in iter {
-            c.add_child(i);
+        let root = NodeData::new(NodeType::Div);
+        let children = iter.into_iter().collect();
+        let estimated_total_children = children.iter().map(|i| i.estimated_total_children).sum() + children.len();
+        Dom {
+            root
+            children
+            estimated_total_children
         }
-        c
     }
 }
 
 impl<T> FromIterator<NodeData<T>> for Dom<T> {
     fn from_iter<I: IntoIterator<Item=NodeData<T>>>(iter: I) -> Self {
-
-        // We have to use a "root" node, otherwise we run into problems if
-        // the iterator executes 0 times (and therefore pushes 0 nodes)
-
-        // "Root" node of this DOM
-        let mut node_data = vec![NodeData::new(NodeType::Div)];
-        let mut node_layout = vec![Node {
-            parent: None,
-            previous_sibling: None,
-            next_sibling: None,
-            last_child: None,
-            first_child: None,
-        }];
-
-        let mut idx = 0;
-
-        for item in iter {
-            let node = Node {
-                parent: Some(NodeId::new(0)),
-                previous_sibling: if idx == 0 { None } else { Some(NodeId::new(idx)) },
-                next_sibling: Some(NodeId::new(idx + 2)),
-                last_child: None,
-                first_child: None,
-            };
-            node_layout.push(node);
-            node_data.push(item);
-
-            idx += 1;
-        }
-
-        let nodes_len = node_layout.len();
-
-        // nodes_len is always at least 1, since we pushed the original root node
-        // Check if there is a child DOM
-        if nodes_len > 1 {
-            if let Some(last) = node_layout.get_mut(nodes_len - 1) {
-                last.next_sibling = None;
+        iter.into_iter().map(|c| NodeData::new(c)).collect()
+        let root = NodeData::new(NodeType::Div);
+        let children = iter.into_iter().map(|node_data| {
+            Dom {
+                root: node_data,
+                children: Vec::new(),
+                estimated_total_children: 0,
             }
-            node_layout[0].last_child = Some(NodeId::new(nodes_len - 1));
-            node_layout[0].first_child = Some(NodeId::new(1));
-        }
-
+        });
+        let estimated_total_children = children.len();
         Dom {
-            head: NodeId::new(0),
-            root: NodeId::new(0),
-            arena: Arena {
-                node_data: NodeDataContainer::new(node_data),
-                node_layout: NodeHierarchy::new(node_layout),
-            },
+            root
+            children
+            estimated_total_children
         }
     }
 }
 
 impl<T> FromIterator<NodeType<T>> for Dom<T> {
     fn from_iter<I: IntoIterator<Item=NodeType<T>>>(iter: I) -> Self {
-        iter.into_iter().map(|i| NodeData { node_type: i, .. Default::default() }).collect()
-    }
-}
-
-/// TODO: promote to const fn once `const_vec_new` is stable
-fn init_arena_with_node_data<T>(node_data: NodeData<T>) -> Arena<NodeData<T>> {
-    use id_tree::ROOT_NODE;
-    Arena {
-        node_layout: NodeHierarchy { internal: vec![ROOT_NODE] },
-        node_data: NodeDataContainer { internal: vec![node_data] },
-    }
-}
-
-/// Prints the debug version of the arena, without printing the actual arena
-pub(crate) fn print_tree<T, F: Fn(&NodeData<T>) -> String + Copy>(arena: &Arena<NodeData<T>>, format_cb: F) -> String {
-    let mut s = String::new();
-    if arena.len() > 0 {
-        print_tree_recursive(arena, format_cb, &mut s, NodeId::new(0), 0);
-    }
-    s
-}
-
-fn print_tree_recursive<T, F: Fn(&NodeData<T>) -> String + Copy>(arena: &Arena<NodeData<T>>, format_cb: F, string: &mut String, current_node_id: NodeId, indent: usize) {
-    let node = &arena.node_layout[current_node_id];
-    let tabs = String::from("    ").repeat(indent);
-    string.push_str(&format!("{}{}\n", tabs, format_cb(&arena.node_data[current_node_id])));
-
-    if let Some(first_child) = node.first_child {
-        print_tree_recursive(arena, format_cb, string, first_child, indent + 1);
-        if node.last_child.is_some() {
-            string.push_str(&format!("{}</{}>\n", tabs, arena.node_data[current_node_id].node_type.get_path()));
-        }
-    }
-
-    if let Some(next_sibling) = node.next_sibling {
-        print_tree_recursive(arena, format_cb, string, next_sibling, indent);
+        iter.into_iter().map(|i| NodeData::new(i)).collect()
     }
 }
 
@@ -1094,151 +1026,47 @@ impl<T> Dom<T> {
     /// TODO: promote to const fn once `const_vec_new` is stable
     #[inline]
     pub fn new(node_type: NodeType<T>) -> Self {
-        let node_data = NodeData::new(node_type); // not const fn yet
-        let arena = init_arena_with_node_data(node_data); // not const fn yet
         Self {
-            arena,
-            root: NodeId::ZERO,
-            head: NodeId::ZERO,
+            root: NodeData::new(node_type),
+            children: Vec::new(),
+            estimated_total_children: 0,
         }
     }
 
-    /// Creates an empty DOM with space reserved for `cap` nodes
-    #[inline]
-    pub fn with_capacity(node_type: NodeType<T>, cap: usize) -> Self {
-        let mut arena = Arena::with_capacity(cap.saturating_add(1));
-        let root = arena.new_node(NodeData::new(node_type));
-        Self {
-            arena: arena,
-            root: root,
-            head: root,
-        }
-    }
-
-    /// Shorthand for `Dom::new(NodeType::Div)`.
+    /// Shorthand for `CompactDom::new(NodeType::Div)`.
     #[inline]
     pub fn div() -> Self {
         Self::new(NodeType::Div)
     }
 
-    /// Shorthand for `Dom::new(NodeType::Label(value.into()))`
+    /// Shorthand for `CompactDom::new(NodeType::Label(value.into()))`
     #[inline]
     pub fn label<S: Into<DomString>>(value: S) -> Self {
         Self::new(NodeType::Label(value.into()))
     }
 
-    /// Shorthand for `Dom::new(NodeType::Text(text_id))`
+    /// Shorthand for `CompactDom::new(NodeType::Text(text_id))`
     #[inline]
     pub fn text_id(text_id: TextId) -> Self {
         Self::new(NodeType::Text(text_id))
     }
 
-    /// Shorthand for `Dom::new(NodeType::Image(image_id))`
+    /// Shorthand for `CompactDom::new(NodeType::Image(image_id))`
     #[inline]
     pub fn image(image: ImageId) -> Self {
         Self::new(NodeType::Image(image))
     }
 
-    /// Shorthand for `Dom::new(NodeType::GlTexture((callback, ptr)))`
+    /// Shorthand for `CompactDom::new(NodeType::GlTexture((callback, ptr)))`
     #[inline]
     pub fn gl_texture<I: Into<StackCheckedPointer<T>>>(callback: GlCallbackTypeUnchecked<T>, ptr: I) -> Self {
         Self::new(NodeType::GlTexture((GlCallback(callback), ptr.into())))
     }
 
-    /// Shorthand for `Dom::new(NodeType::IFrame((callback, ptr)))`
+    /// Shorthand for `CompactDom::new(NodeType::IFrame((callback, ptr)))`
     #[inline]
     pub fn iframe<I: Into<StackCheckedPointer<T>>>(callback: IFrameCallbackTypeUnchecked<T>, ptr: I) -> Self {
         Self::new(NodeType::IFrame((IFrameCallback(callback), ptr.into())))
-    }
-
-    /// Returns the number of nodes in this DOM
-    #[inline]
-    pub fn len(&self) -> usize {
-        self.arena.len()
-    }
-
-    /// Returns an immutable reference to the current HEAD of the DOM structure (the last inserted element)
-    #[inline]
-    pub fn get_head_node(&self) -> &NodeData<T> {
-        &self.arena.node_data[self.head]
-    }
-
-    /// Returns a mutable reference to the current HEAD of the DOM structure (the last inserted element)
-    #[inline]
-    pub fn get_head_node_mut(&mut self) -> &mut NodeData<T> {
-        &mut self.arena.node_data[self.head]
-    }
-
-    /// Adds a child DOM to the current DOM
-    pub fn add_child(&mut self, mut child: Self) {
-
-        // Note: for a more readable Python version of this algorithm,
-        // see: https://gist.github.com/fschutt/4b3bd9a2654b548a6eb0b6a8623bdc8a#file-dow_new_2-py-L65-L107
-
-        let self_len = self.arena.len();
-        let child_len = child.arena.len();
-
-        if child_len == 0 {
-            // No nodes to append, nothing to do
-            return;
-        }
-
-        if self_len == 0 {
-            // Self has no nodes, therefore all child nodes will
-            // replace the self nodes, so
-            *self = child;
-            return;
-        }
-
-        let self_arena = &mut self.arena;
-        let child_arena = &mut child.arena;
-
-        let mut last_sibling = None;
-
-        for node_id in 0..child_len {
-            let node_id = NodeId::new(node_id);
-            let node_id_child: &mut Node = &mut child_arena.node_layout[node_id];
-
-            // WARNING: Order of these blocks is important!
-
-            if node_id_child.previous_sibling.as_mut().and_then(|previous_sibling| {
-                // Some(previous_sibling) - increase the parent ID by the current arena length
-                *previous_sibling += self_len;
-                Some(previous_sibling)
-            }).is_none() {
-                // None - set the current heads' last child as the new previous sibling
-                let last_child = self_arena.node_layout[self.head].last_child;
-                if last_child.is_some() && node_id_child.parent.is_none() {
-                    node_id_child.previous_sibling = last_child;
-                    self_arena.node_layout[last_child.unwrap()].next_sibling = Some(node_id + self_len);
-                }
-            }
-
-            if node_id_child.parent.as_mut().map(|parent| { *parent += self_len; parent }).is_none() {
-                // Have we encountered the last root item?
-                if node_id_child.next_sibling.is_none() {
-                    last_sibling = Some(node_id);
-                }
-                node_id_child.parent = Some(self.head);
-            }
-
-            if let Some(next_sibling) = node_id_child.next_sibling.as_mut() {
-                *next_sibling += self_len;
-            }
-
-            if let Some(first_child) = node_id_child.first_child.as_mut() {
-                *first_child += self_len;
-            }
-
-            if let Some(last_child) = node_id_child.last_child.as_mut() {
-                *last_child += self_len;
-            }
-        }
-
-        self_arena.node_layout[self.head].first_child.get_or_insert(NodeId::new(self_len));
-        self_arena.node_layout[self.head].last_child = Some(last_sibling.unwrap() + self_len);
-
-        (&mut *self_arena).append_arena(child_arena);
     }
 
     /// Same as `id`, but easier to use for method chaining in a builder-style pattern
@@ -1281,56 +1109,131 @@ impl<T> Dom<T> {
     }
 
     #[inline]
-    pub fn with_tab_index(mut self, tab_index: TabIndex) -> Self {
-        self.set_tab_index(tab_index);
-        self
+    pub const fn with_tab_index(self, tab_index: TabIndex) -> Self {
+        Self {
+            root: {
+                tab_index,
+                .. self.root
+            },
+            children: self.children,
+        }
     }
 
     #[inline]
-    pub fn is_draggable(mut self, draggable: bool) -> Self {
-        self.set_draggable(draggable);
-        self
+    pub const fn is_draggable(self, draggable: bool) -> Self {
+        Self {
+            root: {
+                draggable,
+                .. self.root
+            },
+            children: self.children,
+        }
     }
 
     #[inline]
     pub fn add_id<S: Into<DomString>>(&mut self, id: S) {
-        self.arena.node_data[self.head].ids.push(id.into());
+        self.root.ids.push(id.into());
     }
 
     #[inline]
     pub fn add_class<S: Into<DomString>>(&mut self, class: S) {
-        self.arena.node_data[self.head].classes.push(class.into());
+        self.root.classes.push(class.into());
     }
 
     #[inline]
     pub fn add_callback<O: Into<EventFilter>>(&mut self, on: O, callback: CallbackType<T>) {
-        self.arena.node_data[self.head].callbacks.push((on.into(), Callback(callback)));
+        self.root.callbacks.push((on.into(), Callback(callback)));
     }
 
     #[inline]
     pub fn add_default_callback_id<O: Into<EventFilter>>(&mut self, on: O, id: DefaultCallbackId) {
-        self.arena.node_data[self.head].default_callback_ids.push((on.into(), id));
+        self.root.default_callback_ids.push((on.into(), id));
     }
 
     #[inline]
     pub fn add_css_override<S: Into<DomString>, P: Into<CssProperty>>(&mut self, override_id: S, property: P) {
-        self.arena.node_data[self.head].dynamic_css_overrides.push((override_id.into(), property.into()));
+        self.root.dynamic_css_overrides.push((override_id.into(), property.into()));
     }
 
     #[inline]
     pub fn set_tab_index(&mut self, tab_index: TabIndex) {
-        self.arena.node_data[self.head].tab_index = Some(tab_index);
+        self.root.tab_index = Some(tab_index);
     }
 
     #[inline]
     pub fn set_draggable(&mut self, draggable: bool) {
-        self.arena.node_data[self.head].is_draggable = draggable;
+        self.root.is_draggable = draggable;
     }
 
-    /// Returns a debug formatted version of the DOM for easier debugging
-    pub fn debug_dump(&self) -> String {
-        format!("{}", print_tree(&self.arena, |t| format!("{}", t)))
+    #[inline]
+    pub fn add_child(&mut self, child: Self) {
+        self.estimated_total_children += child.estimated_total_children;
+        self.estimated_total_children += 1;
+        self.children.push(child);
     }
+
+    pub fn to_compact_dom(self) -> CompactDom<T> {
+        const DEFAULT_NODE: Node = Node {
+            parent: None,
+            previous_sibling: None,
+            next_sibling: None,
+            first_child: None,
+            last_child: None,
+        };
+        let default_node = NodeData::new(NodeType::Div); // todo: make this const
+        let mut arena = Arena {
+            node_layout: NodeHierarchy { internal: vec![DEFAULT_NODE;self.estimated_total_children] },
+            node_data: NodeDataContainer { internal: vec![default_node;self.estimated_total_children] },
+        };
+
+        let root_node_id = NodeId::ZERO;
+        let root_node = Node {
+            parent: None,
+            previous_sibling: None,
+            next_sibling: None,
+            first_child: if self.children.is_empty() { None } else { Some(root_node_id + 1) },
+            last_child: if self.children.is_empty() { None } else { Some(root_node_id + self.estimated_total_children) },
+        };
+
+        arena.node_data[root_node_id] = self.root;
+        arena.node_layout[root_node_id] = root_node;
+
+        //     let Dom { root, children, estimated_total_children } = self;
+        for c in self.children {
+
+            to_compact_dom_internal(self, &mut arena, root_node_id, root_node);
+        }
+
+        CompactDom { arena }
+    }
+}
+
+fn to_compact_dom_internal(dom: Dom<T>, arena: &mut Arena<T>, parent_node_id: NodeId, node: Node) {
+
+    // - parent [0]
+    //    - child [1]
+    //    - child [2]
+    //    - child [3]
+    //    - child [4]
+    //        - child of child 2 [5]
+    //        - child of child 2 [6]
+    //        - child of child 4 [7]
+
+    let child_len = children.len();
+    for (child_index, c) in children.into_iter().enumerate() {
+        let is_first_child = child_index == 0;
+        let is_last_child = child_index == child_len;
+        let child_node = Node {
+            parent: Some(parent_node_id),
+            previous_sibling: if  { None } else { Some(parent_node_id + child_index + 1) },
+            next_sibling: if  { None } else { Some(parent_node_id + child_index + 2) },
+            first_child: if c.children.is_empty() { None } else { Some(parent_node_id + child_len) },
+            last_child: if c.children.is_empty() { None } else { Some(parent_node_id + child_len + c.estimated_total_children) },
+        };
+
+    }
+
+    to_compact_dom_internal(c, arena, parent_node_id + child_len, child_node);
 }
 
 #[test]
@@ -1339,15 +1242,15 @@ fn test_dom_sibling_1() {
     struct TestLayout;
 
     let dom: Dom<TestLayout> =
-        Dom::new(NodeType::Div)
+        CompactDom::new(NodeType::Div)
             .with_child(
-                Dom::new(NodeType::Div)
+                CompactDom::new(NodeType::Div)
                 .with_id("sibling-1")
-                .with_child(Dom::new(NodeType::Div)
+                .with_child(CompactDom::new(NodeType::Div)
                     .with_id("sibling-1-child-1")))
-            .with_child(Dom::new(NodeType::Div)
+            .with_child(CompactDom::new(NodeType::Div)
                 .with_id("sibling-2")
-                .with_child(Dom::new(NodeType::Div)
+                .with_child(CompactDom::new(NodeType::Div)
                     .with_id("sibling-2-child-1")));
 
     let arena = &dom.arena;

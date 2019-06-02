@@ -1,6 +1,6 @@
 use std::sync::{Arc, Mutex};
 use {
-    dom::Dom,
+    dom::CompactDom,
 };
 
 use callbacks::LayoutInfo;
@@ -23,7 +23,7 @@ pub trait Layout {
     /// ## Example
     ///
     /// ```rust
-    /// use azul::{dom::Dom, traits::Layout, callbacks::LayoutInfo};
+    /// use azul::{dom::CompactDom , traits::Layout, callbacks::LayoutInfo};
     ///
     /// struct MyDataModel { }
     ///

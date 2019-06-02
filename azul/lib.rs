@@ -257,7 +257,7 @@ pub mod prelude {
         FragmentShaderCompileError, GlShaderLinkError, GlShaderCreateError,
     };
     pub use dom::{
-        Dom, DomHash, NodeType, NodeData, On, DomString, TabIndex,
+        CompactDom, DomHash, NodeType, NodeData, On, DomString, TabIndex,
         EventFilter, HoverEventFilter, FocusEventFilter, NotEventFilter, WindowEventFilter,
     };
     pub use traits::{Layout, Modify};
